@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLE Serial Terminal</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#007bff">
+    
+    <style>
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; max-width: 600px; margin: auto; }
+        #terminal { background: #1e1e1e; color: #00ff00; padding: 15px; height: 200px; overflow-y: auto; border-radius: 5px; font-family: monospace; margin-bottom: 10px; }
+        .controls { display: flex; gap: 10px; flex-direction: column; }
+        button { padding: 12px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; font-size: 1rem; }
+        button:disabled { background: #ccc; }
+        input { padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+    <h2>BLE Serial PWA</h2>
+    
+    <div id="terminal">Welcome. Click "Connect" to start...</div>
+
+    <div class="controls">
+        <button id="connectBtn">Connect to BLE Device</button>
+        <hr>
+        <input type="text" id="commandInput" placeholder="Type command (e.g. LED_ON)" disabled>
+        <button id="sendBtn" disabled>Send Command</button>
+    </div>
+
+    <script>
+        let device, server, characteristic;
+        const UART_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+        const UART_TX_CHARACTERISTIC_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+
+        const terminal = document.getElementById('terminal');
+        const connectBtn = document.getElementById('connectBtn');
+        const sendBtn = document.getElementById('sendBtn');
+        const commandInput = document.getElementById('commandInput');
+
+        function log(msg) {
+            const line = document.createElement('div');
+            line.textContent = `> ${msg}`;
+            terminal.appendChild(line);
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        // 3. Bluetooth Connection Logic
+        connectBtn.addEventListener('click', async () => {
+            try {
+                log("Requesting Bluetooth device...");
+                device = await navigator.bluetooth.requestDevice({
+                    filters: [{ services: [UART_SERVICE_UUID] }]
+                });
+
+                log(`Connecting to ${device.name}...`);
+                server = await device.gatt.connect();
+                
+                const service = await server.getPrimaryService(UART_SERVICE_UUID);
+                characteristic = await service.getCharacteristic(UART_TX_CHARACTERISTIC_UUID);
+
+                log("Connected! Ready to send.");
+                
+                // Enable controls
+                commandInput.disabled = false;
+                sendBtn.disabled = false;
+                connectBtn.textContent = "Connected ✅";
+                connectBtn.disabled = true;
+
+            } catch (error) {
+                log(`Error: ${error.message}`);
+            }
+        });
+
+        // 4. Sending Data Logic
+        sendBtn.addEventListener('click', async () => {
+            const cmd = commandInput.value;
+            if (!cmd || !characteristic) return;
+
+            try {
+                const encoder = new TextEncoder();
+                await characteristic.writeValueWithResponse(encoder.encode(cmd + '\n'));
+                log(`Sent: ${cmd}`);
+                commandInput.value = '';
+            } catch (error) {
+                log(`Send Error: ${error.message}`);
+            }
+        });
+
+        // 5. Register Service Worker for PWA functionality
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                .then(reg => console.log('SW Registered!', reg))
+                .catch(err => console.log('SW Registration Failed', err));
+            });
+        }
+    </script>
+</body>
+</html>
