@@ -3,102 +3,93 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PWA Car Controller</title>
+    <title>BLE Car Pro</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1a1a1a">
     
     <style>
         body { 
-            font-family: system-ui, sans-serif; 
+            font-family: system-ui, -apple-system, sans-serif; 
             background: #1a1a1a; color: white; 
-            text-align: center; margin: 0; padding: 20px;
-            user-select: none; 
-            touch-action: none; /* Prevents scrolling/zooming while driving */
+            text-align: center; margin: 0; padding: env(safe-area-inset-top) 20px 20px 20px;
+            user-select: none; touch-action: none; 
         }
 
+        /* Status & Console */
+        .status-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 10px; padding: 0 5px; font-size: 0.8rem; color: #aaa;
+        }
+        #conn-badge { color: #ff4444; font-weight: bold; }
+        
         #terminal { 
-            background: #000; color: #0f0; padding: 10px; height: 60px; 
+            background: #000; color: #0f0; padding: 10px; height: 70px; 
             overflow-y: auto; border-radius: 8px; font-family: monospace; 
-            font-size: 0.8rem; margin-bottom: 15px; border: 1px solid #333; text-align: left;
+            font-size: 0.75rem; margin-bottom: 15px; border: 1px solid #333; text-align: left;
         }
 
-        .btn-connect {
-            width: 100%; max-width: 300px; padding: 15px; border: none;
-            background: #28a745; color: white; font-weight: bold;
-            border-radius: 10px; margin-bottom: 20px; cursor: pointer;
-        }
+        /* Top Buttons */
+        .btn-row { display: flex; gap: 10px; margin-bottom: 20px; }
+        .btn-connect { flex: 2; padding: 15px; background: #28a745; color: white; border: none; border-radius: 10px; font-weight: bold; }
+        .btn-off { flex: 1; padding: 15px; background: #444; color: #ff4444; border: 1px solid #555; border-radius: 10px; display: none; }
 
-        .controller-container {
-            display: flex; flex-direction: column; align-items: center; gap: 25px;
-        }
-
-        /* D-PAD Styling */
+        /* Driving Grid */
+        .controller-container { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+        
         .dpad {
-            display: grid;
-            grid-template-columns: repeat(3, 90px);
-            grid-template-rows: repeat(3, 90px);
-            gap: 12px;
+            display: grid; grid-template-columns: repeat(3, 85px); grid-template-rows: repeat(3, 85px); gap: 12px;
         }
 
         .btn-drive {
-            background: #333; color: white; border: none;
-            border-radius: 20px; font-size: 2rem;
+            background: #333; color: white; border: none; border-radius: 18px; font-size: 1.8rem;
             display: flex; align-items: center; justify-content: center;
-            box-shadow: 0 6px #000; transition: all 0.05s;
+            box-shadow: 0 5px #000; transition: all 0.05s;
         }
 
-        /* Visual "Press" Effect */
-        .btn-drive:active {
-            box-shadow: 0 0px #000;
-            transform: translateY(6px);
-            background: #555;
-        }
+        .btn-drive:active { box-shadow: 0 0px #000; transform: translateY(5px); background: #444; }
+        .btn-drive:disabled { opacity: 0.2; box-shadow: none; }
 
-        .up    { grid-column: 2; grid-row: 1; }
-        .left  { grid-column: 1; grid-row: 2; }
-        .stop  { grid-column: 2; grid-row: 2; background: #dc3545; font-size: 1rem; }
+        .up { grid-column: 2; grid-row: 1; }
+        .left { grid-column: 1; grid-row: 2; }
+        .stop { grid-column: 2; grid-row: 2; background: #dc3545; font-size: 0.9rem; }
         .right { grid-column: 3; grid-row: 2; }
-        .down  { grid-column: 2; grid-row: 3; }
+        .down { grid-column: 2; grid-row: 3; }
 
-        /* Secondary Actions (T, F, Q, E) */
-        .actions { display: flex; gap: 15px; }
+        /* Action Buttons */
+        .actions { display: flex; gap: 12px; }
         .btn-act {
-            width: 65px; height: 65px; border-radius: 50%; border: none;
-            color: white; font-weight: bold; font-size: 1.2rem;
-            box-shadow: 0 4px #000;
+            width: 60px; height: 60px; border-radius: 50%; border: none;
+            color: white; font-weight: bold; font-size: 1.1rem; box-shadow: 0 4px #000;
         }
         .btn-act:active { transform: translateY(4px); box-shadow: 0 0px #000; }
+        .btn-act:disabled { opacity: 0.2; }
     </style>
 </head>
 <body>
 
-    <div id="terminal">System: Ready...</div>
-    <button id="connectBtn" class="btn-connect">CONNECT VIA BLUETOOTH</button>
+    <div class="status-bar">
+        <span>DEVICE: <span id="conn-badge">OFFLINE</span></span>
+        <span id="device-name">---</span>
+    </div>
+
+    <div id="terminal">System: Ready to connect...</div>
+
+    <div class="btn-row">
+        <button id="connectBtn" class="btn-connect">CONNECT CAR</button>
+        <button id="disconnectBtn" class="btn-off">DISCONNECT</button>
+    </div>
 
     <div class="controller-container">
         <div class="dpad">
-            <button class="btn-drive up" 
-                ontouchstart="sendCommand('U')" ontouchend="sendCommand('S')"
-                onmousedown="sendCommand('U')" onmouseup="sendCommand('S')">▲</button>
-            
-            <button class="btn-drive left" 
-                ontouchstart="sendCommand('R')" ontouchend="sendCommand('S')"
-                onmousedown="sendCommand('R')" onmouseup="sendCommand('S')">◀</button>
-            
+            <button class="btn-drive up" data-cmd="U">▲</button>
+            <button class="btn-drive left" data-cmd="L">◀</button>
             <button class="btn-drive stop" onclick="sendCommand('S')">STOP</button>
-            
-            <button class="btn-drive right" 
-                ontouchstart="sendCommand('L')" ontouchend="sendCommand('S')"
-                onmousedown="sendCommand('L')" onmouseup="sendCommand('S')">▶</button>
-            
-            <button class="btn-drive down" 
-                ontouchstart="sendCommand('D')" ontouchend="sendCommand('S')"
-                onmousedown="sendCommand('D')" onmouseup="sendCommand('S')">▼</button>
+            <button class="btn-drive right" data-cmd="R">▶</button>
+            <button class="btn-drive down" data-cmd="D">▼</button>
         </div>
 
         <div class="actions">
-            <button class="btn-act" style="background:#dc3545" onclick="sendCommand('1')">1</button>
-            <button class="btn-act" style="background:#ffc107; color:black" onclick="sendCommand('T')">T</button>
+            <button class="btn-act" style="background:#ffc107;color:000" onclick="sendCommand('T')">T</button>
             <button class="btn-act" style="background:#17a2b8" onclick="sendCommand('F')">F</button>
             <button class="btn-act" style="background:#6c757d" onclick="sendCommand('E')">E</button>
             <button class="btn-act" style="background:#dc3545" onclick="sendCommand('Q')">Q</button>
@@ -110,44 +101,96 @@
         const SERVICE_UUID = 0xFFE0; 
         const CHARACTERISTIC_UUID = 0xFFE1;
 
-        const logView = document.getElementById('terminal');
+        const terminal = document.getElementById('terminal');
         const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const badge = document.getElementById('conn-badge');
+        const nameDisplay = document.getElementById('device-name');
 
         function log(msg) {
             const line = document.createElement('div');
             line.textContent = `> ${msg}`;
-            logView.appendChild(line);
-            logView.scrollTop = logView.scrollHeight;
+            terminal.appendChild(line);
+            terminal.scrollTop = terminal.scrollHeight;
         }
 
+        // Connect Logic
         connectBtn.addEventListener('click', async () => {
             try {
+                log("Searching...");
                 device = await navigator.bluetooth.requestDevice({
                     filters: [{ services: [SERVICE_UUID] }]
                 });
+
+                // Connection Watchdog
+                device.addEventListener('gattserverdisconnected', onDisconnected);
+
+                log("Connecting to GATT...");
                 const server = await device.gatt.connect();
                 const service = await server.getPrimaryService(SERVICE_UUID);
                 characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
-                log("Connected to Car!");
-                connectBtn.textContent = "CONNECTED ✅";
+
+                log("Connected to " + device.name);
+                updateUI(true);
             } catch (error) {
-                log("Connect Error: " + error.message);
+                log("Error: " + error.message);
             }
         });
+
+        // Disconnect Logic
+        disconnectBtn.addEventListener('click', () => {
+            if (device && device.gatt.connected) {
+                device.gatt.disconnect();
+            }
+        });
+
+        function onDisconnected(event) {
+            log("Alert: Device disconnected.");
+            updateUI(false);
+            characteristic = null;
+        }
+
+        function updateUI(connected) {
+            if (connected) {
+                badge.textContent = "ONLINE";
+                badge.style.color = "#28a745";
+                nameDisplay.textContent = device.name;
+                connectBtn.style.display = "none";
+                disconnectBtn.style.display = "block";
+            } else {
+                badge.textContent = "OFFLINE";
+                badge.style.color = "#ff4444";
+                nameDisplay.textContent = "---";
+                connectBtn.style.display = "block";
+                disconnectBtn.style.display = "none";
+            }
+        }
 
         async function sendCommand(cmd) {
             if (!characteristic) return;
             try {
                 const encoder = new TextEncoder();
-                // writeValueWithoutResponse is faster for rapid driving commands
                 await characteristic.writeValueWithoutResponse(encoder.encode(cmd));
                 console.log("Sent: " + cmd);
             } catch (error) {
-                console.warn("Send Error: " + error.message);
+                console.warn("Send Failed: " + error.message);
             }
         }
 
-        // Register Service Worker
+        // Setup Hold-to-Run for D-Pad
+        document.querySelectorAll('.btn-drive').forEach(button => {
+            const cmd = button.getAttribute('data-cmd');
+            if(!cmd) return; // Skip the Stop button
+
+            const start = (e) => { e.preventDefault(); sendCommand(cmd); };
+            const stop = (e) => { e.preventDefault(); sendCommand('S'); };
+
+            button.addEventListener('touchstart', start);
+            button.addEventListener('touchend', stop);
+            button.addEventListener('mousedown', start);
+            button.addEventListener('mouseup', stop);
+        });
+
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/sw.js').catch(err => console.error(err));
         }
