@@ -2,99 +2,153 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BLE Serial Terminal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PWA Car Controller</title>
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#007bff">
+    <meta name="theme-color" content="#1a1a1a">
     
     <style>
-        body { font-family: sans-serif; padding: 20px; line-height: 1.6; max-width: 600px; margin: auto; }
-        #terminal { background: #1e1e1e; color: #00ff00; padding: 15px; height: 200px; overflow-y: auto; border-radius: 5px; font-family: monospace; margin-bottom: 10px; }
-        .controls { display: flex; gap: 10px; flex-direction: column; }
-        button { padding: 12px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; font-size: 1rem; }
-        button:disabled { background: #ccc; }
-        input { padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        body { 
+            font-family: system-ui, sans-serif; 
+            background: #1a1a1a; color: white; 
+            text-align: center; margin: 0; padding: 20px;
+            user-select: none; 
+            touch-action: none; /* Prevents scrolling/zooming while driving */
+        }
+
+        #terminal { 
+            background: #000; color: #0f0; padding: 10px; height: 60px; 
+            overflow-y: auto; border-radius: 8px; font-family: monospace; 
+            font-size: 0.8rem; margin-bottom: 15px; border: 1px solid #333; text-align: left;
+        }
+
+        .btn-connect {
+            width: 100%; max-width: 300px; padding: 15px; border: none;
+            background: #28a745; color: white; font-weight: bold;
+            border-radius: 10px; margin-bottom: 20px; cursor: pointer;
+        }
+
+        .controller-container {
+            display: flex; flex-direction: column; align-items: center; gap: 25px;
+        }
+
+        /* D-PAD Styling */
+        .dpad {
+            display: grid;
+            grid-template-columns: repeat(3, 90px);
+            grid-template-rows: repeat(3, 90px);
+            gap: 12px;
+        }
+
+        .btn-drive {
+            background: #333; color: white; border: none;
+            border-radius: 20px; font-size: 2rem;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 6px #000; transition: all 0.05s;
+        }
+
+        /* Visual "Press" Effect */
+        .btn-drive:active {
+            box-shadow: 0 0px #000;
+            transform: translateY(6px);
+            background: #555;
+        }
+
+        .up    { grid-column: 2; grid-row: 1; }
+        .left  { grid-column: 1; grid-row: 2; }
+        .stop  { grid-column: 2; grid-row: 2; background: #dc3545; font-size: 1rem; }
+        .right { grid-column: 3; grid-row: 2; }
+        .down  { grid-column: 2; grid-row: 3; }
+
+        /* Secondary Actions (T, F, Q, E) */
+        .actions { display: flex; gap: 15px; }
+        .btn-act {
+            width: 65px; height: 65px; border-radius: 50%; border: none;
+            color: white; font-weight: bold; font-size: 1.2rem;
+            box-shadow: 0 4px #000;
+        }
+        .btn-act:active { transform: translateY(4px); box-shadow: 0 0px #000; }
     </style>
 </head>
 <body>
 
-    <h2>BLE Serial PWA</h2>
-    
-    <div id="terminal">Welcome. Click "Connect" to start...</div>
+    <div id="terminal">System: Ready...</div>
+    <button id="connectBtn" class="btn-connect">CONNECT VIA BLUETOOTH</button>
 
-    <div class="controls">
-        <button id="connectBtn">Connect to BLE Device</button>
-        <hr>
-        <input type="text" id="commandInput" placeholder="Type command (e.g. LED_ON)" disabled>
-        <button id="sendBtn" disabled>Send Command</button>
+    <div class="controller-container">
+        <div class="dpad">
+            <button class="btn-drive up" 
+                ontouchstart="sendCommand('U')" ontouchend="sendCommand('S')"
+                onmousedown="sendCommand('U')" onmouseup="sendCommand('S')">▲</button>
+            
+            <button class="btn-drive left" 
+                ontouchstart="sendCommand('L')" ontouchend="sendCommand('S')"
+                onmousedown="sendCommand('L')" onmouseup="sendCommand('S')">◀</button>
+            
+            <button class="btn-drive stop" onclick="sendCommand('S')">STOP</button>
+            
+            <button class="btn-drive right" 
+                ontouchstart="sendCommand('R')" ontouchend="sendCommand('S')"
+                onmousedown="sendCommand('R')" onmouseup="sendCommand('S')">▶</button>
+            
+            <button class="btn-drive down" 
+                ontouchstart="sendCommand('D')" ontouchend="sendCommand('S')"
+                onmousedown="sendCommand('D')" onmouseup="sendCommand('S')">▼</button>
+        </div>
+
+        <div class="actions">
+            <button class="btn-act" style="background:#ffc107; color:black" onclick="sendCommand('T')">T</button>
+            <button class="btn-act" style="background:#17a2b8" onclick="sendCommand('F')">F</button>
+            <button class="btn-act" style="background:#6c757d" onclick="sendCommand('E')">E</button>
+            <button class="btn-act" style="background:#dc3545" onclick="sendCommand('Q')">Q</button>
+        </div>
     </div>
 
     <script>
-        let device, server, characteristic;
-        const UART_SERVICE_UUID = 0xFFE0;
-        const UART_TX_CHARACTERISTIC_UUID = 0xFFE1;
+        let device, characteristic;
+        const SERVICE_UUID = 0xFFE0; 
+        const CHARACTERISTIC_UUID = 0xFFE1;
 
-        const terminal = document.getElementById('terminal');
+        const logView = document.getElementById('terminal');
         const connectBtn = document.getElementById('connectBtn');
-        const sendBtn = document.getElementById('sendBtn');
-        const commandInput = document.getElementById('commandInput');
 
         function log(msg) {
             const line = document.createElement('div');
             line.textContent = `> ${msg}`;
-            terminal.appendChild(line);
-            terminal.scrollTop = terminal.scrollHeight;
+            logView.appendChild(line);
+            logView.scrollTop = logView.scrollHeight;
         }
 
-        // 3. Bluetooth Connection Logic
         connectBtn.addEventListener('click', async () => {
             try {
-                log("Requesting Bluetooth device...");
                 device = await navigator.bluetooth.requestDevice({
-                    filters: [{ services: [UART_SERVICE_UUID] }]
+                    filters: [{ services: [SERVICE_UUID] }]
                 });
-
-                log(`Connecting to ${device.name}...`);
-                server = await device.gatt.connect();
-                
-                const service = await server.getPrimaryService(UART_SERVICE_UUID);
-                characteristic = await service.getCharacteristic(UART_TX_CHARACTERISTIC_UUID);
-
-                log("Connected! Ready to send.");
-                
-                // Enable controls
-                commandInput.disabled = false;
-                sendBtn.disabled = false;
-                connectBtn.textContent = "Connected ✅";
-                connectBtn.disabled = true;
-
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(SERVICE_UUID);
+                characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+                log("Connected to Car!");
+                connectBtn.textContent = "CONNECTED ✅";
             } catch (error) {
-                log(`Error: ${error.message}`);
+                log("Connect Error: " + error.message);
             }
         });
 
-        // 4. Sending Data Logic
-        sendBtn.addEventListener('click', async () => {
-            const cmd = commandInput.value;
-            if (!cmd || !characteristic) return;
-
+        async function sendCommand(cmd) {
+            if (!characteristic) return;
             try {
                 const encoder = new TextEncoder();
-                await characteristic.writeValueWithResponse(encoder.encode(cmd + '\n'));
-                log(`Sent: ${cmd}`);
-                commandInput.value = '';
+                // writeValueWithoutResponse is faster for rapid driving commands
+                await characteristic.writeValueWithoutResponse(encoder.encode(cmd));
+                console.log("Sent: " + cmd);
             } catch (error) {
-                log(`Send Error: ${error.message}`);
+                console.warn("Send Error: " + error.message);
             }
-        });
+        }
 
-        // 5. Register Service Worker for PWA functionality
+        // Register Service Worker
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                .then(reg => console.log('SW Registered!', reg))
-                .catch(err => console.log('SW Registration Failed', err));
-            });
+            navigator.serviceWorker.register('/sw.js').catch(err => console.error(err));
         }
     </script>
 </body>
