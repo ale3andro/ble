@@ -89,7 +89,8 @@
         </div>
 
         <div class="actions">
-            <button class="btn-act" style="background:#dc3545" onclick="sendCommand('1')">1</button>
+            <button class="btn-act" style="background:#dc3545" onclick="sendCommand('1')">Bluetooth Remote</button>
+            <button class="btn-act" style="background:#dc3545" onclick="sendCommand('2')">Line tracking slow</button>
             <button class="btn-act" style="background:#ffc107;color:000" onclick="sendCommand('T')">T</button>
             <button class="btn-act" style="background:#17a2b8" onclick="sendCommand('F')">F</button>
             <button class="btn-act" style="background:#6c757d" onclick="sendCommand('E')">E</button>
@@ -170,8 +171,14 @@
         async function sendCommand(cmd) {
             if (!characteristic) return;
             try {
-                if (cmd=='1') {
+                if (cmd=='1') { // Bluetooth remote control
                     dataArray = [0, 0, 0, 0, 0, 0, 1, 1];
+                    ble_enable_json = JSON.stringify({ data: dataArray });
+                    const encoder = new TextEncoder();
+                    await characteristic.writeValueWithoutResponse(encoder.encode(ble_enable_json));
+                    console.log("Sent: " + ble_enable_json);
+                } else if (cmd=='2') { // Line tracking slow
+                    dataArray = [0, 1, 0, 0, 0, 0, 0, 1];
                     ble_enable_json = JSON.stringify({ data: dataArray });
                     const encoder = new TextEncoder();
                     await characteristic.writeValueWithoutResponse(encoder.encode(ble_enable_json));
