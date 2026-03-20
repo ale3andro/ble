@@ -170,9 +170,17 @@
         async function sendCommand(cmd) {
             if (!characteristic) return;
             try {
-                const encoder = new TextEncoder();
-                await characteristic.writeValueWithoutResponse(encoder.encode(cmd));
-                console.log("Sent: " + cmd);
+                if (cmd=='1') {
+                    dataArray = [0, 0, 0, 0, 0, 0, 1, 1];
+                    ble_enable_json = JSON.stringify({ data: dataArray });
+                    const encoder = new TextEncoder();
+                    await characteristic.writeValueWithoutResponse(encoder.encode(ble_enable_json));
+                    console.log("Sent: " + ble_enable_json);
+                } else {
+                    const encoder = new TextEncoder();
+                    await characteristic.writeValueWithoutResponse(encoder.encode(cmd));
+                    console.log("Sent: " + cmd);
+                }
             } catch (error) {
                 console.warn("Send Failed: " + error.message);
             }
