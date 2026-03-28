@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BLE Car Pro</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1a1a1a">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+
+    <style>
+        body { 
+            font-family: system-ui, -apple-system, sans-serif; 
+            background: #1a1a1a; color: white; 
+            text-align: center; margin: 0; padding: env(safe-area-inset-top) 20px 20px 20px;
+            user-select: none; touch-action: none; 
+        }
+
+        /* Status & Console */
+        .status-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 10px; padding: 0 5px; font-size: 0.8rem; color: #aaa;
+        }
+        #conn-badge { color: #ff4444; font-weight: bold; }
+        
+        #terminal { 
+            background: #000; color: #0f0; padding: 10px; height: 70px; 
+            overflow-y: auto; border-radius: 8px; font-family: monospace; 
+            font-size: 0.75rem; margin-bottom: 15px; border: 1px solid #333; text-align: left;
+        }
+
+        /* Top Buttons */
+        .btn-row { display: flex; gap: 10px; margin-bottom: 20px; }
+        .btn-connect { flex: 2; padding: 15px; background: #28a745; color: white; border: none; border-radius: 10px; font-weight: bold; }
+        .btn-off { flex: 1; padding: 15px; background: #444; color: #ff4444; border: 1px solid #555; border-radius: 10px; display: none; }
+
+        /* Driving Grid */
+        .controller-container { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+        
+        .dpad {
+            display: grid; grid-template-columns: repeat(3, 85px); grid-template-rows: repeat(3, 85px); gap: 12px;
+        }
+
+        .btn-drive {
+            background: #333; color: white; border: none; border-radius: 18px; font-size: 1.8rem;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 5px #000; transition: all 0.05s;
+        }
+
+        .btn-drive:active { box-shadow: 0 0px #000; transform: translateY(5px); background: #444; }
+        .btn-drive:disabled { opacity: 0.2; box-shadow: none; }
+
+        .up { grid-column: 2; grid-row: 1; }
+        .left { grid-column: 1; grid-row: 2; }
+        .stop { grid-column: 2; grid-row: 2; background: #dc3545; font-size: 0.9rem; }
+        .right { grid-column: 3; grid-row: 2; }
+        .down { grid-column: 2; grid-row: 3; }
+
+        /* Action Buttons */
+        .actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+        .btn-act {
+            width: 60px; height: 60px; border-radius: 50%; border: none;
+            color: white; font-weight: bold; font-size: 0.7rem; box-shadow: 0 4px #000;
+        }
+        .btn-act:active { transform: translateY(4px); box-shadow: 0 0px #000; }
+        .btn-act:disabled { opacity: 0.2; }
+
+        /* ── Joystick Section ── */
+        .joystick-section {
+            display: flex; flex-direction: column; align-items: center; gap: 10px;
+            margin-top: 10px;
+        }
+
+        .joystick-label {
+            font-size: 0.75rem; color: #888; letter-spacing: 0.08em; text-transform: uppercase;
+        }
+
+        /* The zone nipplejs renders into */
+        #joystick-zone {
+            width: 160px; height: 160px;
+            background: #222; border-radius: 50%;
+            border: 2px solid #444;
+            position: relative; touch-action: none;
+        }
+
+        /* Live readout under the joystick */
+        #joystick-readout {
+            font-size: 0.7rem; color: #555; font-family: monospace;
+            min-width: 120px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="status-bar">
+        <span>DEVICE: <span id="conn-badge">OFFLINE</span></span>
+        <span id="device-name">---</span>
+    </div>
+
+    <div id="terminal">System: Ready to connect...</div>
+
+    <div class="btn-row">
+        <button id="connectBtn" class="btn-connect">CONNECT CAR</button>
+        <button id="disconnectBtn" class="btn-off">DISCONNECT</button>
+    </div>
+
+    <div class="controller-container">
+        <div class="dpad">
+            <button class="btn-drive up" data-cmd="U">▲</button>
+            <button class="btn-drive left" data-cmd="L">◀</button>
+            <button class="btn-drive stop" onclick="sendCommand('S')">STOP</button>
+            <button class="btn-drive right" data-cmd="R">▶</button>
+            <button class="btn-drive down" data-cmd="D">▼</button>
+        </div>
+
+        <div class="actions">
+            <button class="btn-act" style="background:#dc3545" onclick="sendCommand('1')">BT Remote</button>
+            <button class="btn-act" style="background:#dc3545" onclick="sendCommand('2')">Line slow</button>
+            <button class="btn-act" style="background:#dc3545" onclick="sendCommand('3')">Full auto</button>
+            <button class="btn-act" style="background:#ffc107;color:#000" onclick="sendCommand('P')">Reset</button>
+            <button class="btn-act" style="background:#17a2b8" onclick="sendCommand('+')">+</button>
+            <button class="btn-act" style="background:#6c757d" onclick="sendCommand('-')">-</button>
+            <button class="btn-act" style="background:#dc3545" onclick="sendCommand('C')">C</button>
+        </div>
+
+        <!-- ── Virtual Joystick ── -->
+        <div class="joystick-section">
+            <span class="joystick-label">Joystick Drive</span>
+            <div id="joystick-zone"></div>
+            <span id="joystick-readout">X: 0 &nbsp; Y: 0</span>
+        </div>
+    </div>
+
+    <script>
+        let device, characteristic;
+        const SERVICE_UUID = 0xFFE0; 
+        const CHARACTERISTIC_UUID = 0xFFE1;
+
+        const terminal = document.getElementById('terminal');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const badge = document.getElementById('conn-badge');
+        const nameDisplay = document.getElementById('device-name');
+        const joystickReadout = document.getElementById('joystick-readout');
+
+        function log(msg) {
+            const line = document.createElement('div');
+            line.textContent = `> ${msg}`;
+            terminal.appendChild(line);
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        // ── Connect Logic ──────────────────────────────────────
+        connectBtn.addEventListener('click', async () => {
+            try {
+                log("Searching...");
+                device = await navigator.bluetooth.requestDevice({
+                    filters: [{ services: [SERVICE_UUID] }]
+                });
+                device.addEventListener('gattserverdisconnected', onDisconnected);
+                log("Connecting to GATT...");
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(SERVICE_UUID);
+                characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+                log("Connected to " + device.name);
+                updateUI(true);
+            } catch (error) {
+                log("Error: " + error.message);
+            }
+        });
+
+        disconnectBtn.addEventListener('click', () => {
+            if (device && device.gatt.connected) device.gatt.disconnect();
+        });
+
+        function onDisconnected() {
+            log("Alert: Device disconnected.");
+            updateUI(false);
+            characteristic = null;
+        }
+
+        function updateUI(connected) {
+            if (connected) {
+                badge.textContent = "ONLINE";
+                badge.style.color = "#28a745";
+                nameDisplay.textContent = device.name;
+                connectBtn.style.display = "none";
+                disconnectBtn.style.display = "block";
+            } else {
+                badge.textContent = "OFFLINE";
+                badge.style.color = "#ff4444";
+                nameDisplay.textContent = "---";
+                connectBtn.style.display = "block";
+                disconnectBtn.style.display = "none";
+            }
+        }
+
+        // ── Send Command ───────────────────────────────────────
+        async function sendCommand(cmd) {
+            if (!characteristic) return;
+            try {
+                let payload;
+                if (cmd === '1') {
+                    payload = JSON.stringify({ data: [0, 0, 0, 0, 0, 0, 1, 1] });
+                } else if (cmd === '2') {
+                    payload = JSON.stringify({ data: [0, 1, 0, 0, 0, 0, 0, 1] });
+                } else if (cmd === '3') {
+                    payload = JSON.stringify({ data: [1, 1, 1, 1, 1, 1, 1, 1] });
+                } else {
+                    payload = cmd;
+                }
+                const encoder = new TextEncoder();
+                await characteristic.writeValueWithoutResponse(encoder.encode(payload));
+                console.log("Sent: " + payload);
+            } catch (error) {
+                console.warn("Send Failed: " + error.message);
+            }
+        }
+
+        // ── Send Joystick Packet ───────────────────────────────
+        // Format: "Jxxx,yyy\n"  values are -100 to +100, zero-padded with sign
+        // Y axis is inverted: nipplejs Y+ = down, but we want Y+ = forward
+        async function sendJoystick(x, y) {
+            if (!characteristic) return;
+            try {
+                const fx = String(Math.round(x)).padStart(4, ' ').replace(/^ /, '+');
+                const fy = String(Math.round(y)).padStart(4, ' ').replace(/^ /, '+');
+                const packet = `J${fx},${fy}\n`;
+                const encoder = new TextEncoder();
+                await characteristic.writeValueWithoutResponse(encoder.encode(packet));
+            } catch (error) {
+                console.warn("Joystick send failed: " + error.message);
+            }
+        }
+
+        // ── D-Pad Hold-to-Run ──────────────────────────────────
+        document.querySelectorAll('.btn-drive').forEach(button => {
+            const cmd = button.getAttribute('data-cmd');
+            if (!cmd) return;
+            const start = (e) => { e.preventDefault(); sendCommand(cmd); };
+            const stop  = (e) => { e.preventDefault(); sendCommand('S'); };
+            button.addEventListener('touchstart', start);
+            button.addEventListener('touchend',   stop);
+            button.addEventListener('mousedown',  start);
+            button.addEventListener('mouseup',    stop);
+        });
+
+        // ── Joystick Setup ─────────────────────────────────────
+        const joystickZone = document.getElementById('joystick-zone');
+
+        const joystick = nipplejs.create({
+            zone: joystickZone,
+            mode: 'static',
+            position: { left: '50%', top: '50%' },
+            color: '#17a2b8',
+            size: 120,
+            restOpacity: 0.7,
+        });
+
+        // Throttle: only send a packet every N ms to avoid flooding BLE
+        const JOYSTICK_INTERVAL_MS = 80;
+        let joystickTimer = null;
+        let lastJX = 0, lastJY = 0;
+
+        function startJoystickSending() {
+            if (joystickTimer) return;
+            joystickTimer = setInterval(() => {
+                joystickReadout.textContent = `X: ${lastJX}  Y: ${lastJY}`;
+                sendJoystick(lastJX, lastJY);
+            }, JOYSTICK_INTERVAL_MS);
+        }
+
+        function stopJoystickSending() {
+            clearInterval(joystickTimer);
+            joystickTimer = null;
+            lastJX = 0; lastJY = 0;
+            joystickReadout.textContent = 'X: 0   Y: 0';
+            sendCommand('S'); // stop the car when finger lifts
+        }
+
+        joystick.on('move', (evt, data) => {
+            // nipplejs gives angle in degrees and force 0-1
+            // Convert polar → X/Y in range -100 to +100
+            const force = Math.min(data.force, 1.0); // cap at 1
+            const angle = data.angle.radian;
+            lastJX =  Math.round(Math.cos(angle) * force * 100);
+            lastJY =  Math.round(Math.sin(angle) * force * 100); // sin: up = positive
+            startJoystickSending();
+        });
+
+        joystick.on('end', () => {
+            stopJoystickSending();
+        });
+
+        // ── Service Worker ─────────────────────────────────────
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').catch(err => console.error(err));
+        }
+    </script>
+</body>
+</html>
